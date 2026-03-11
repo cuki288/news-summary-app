@@ -44,9 +44,8 @@ ollama run qwen3.5:2b
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | /api/articles | All articles |
-| GET | /api/articles?category=politics | Filter by category |
-| GET | /api/articles/hot | Top 10 with summaries |
+| GET | /api/articles | All articles (optional ?category=) |
+| GET | /api/articles/hot | Top 10 with AI summaries |
 | POST | /api/summarize | Trigger manual summarization |
 
 ## Architecture

@@ -1,100 +1,72 @@
 package com.openclaw.news.service;
 
 import com.openclaw.news.model.Article;
-import com.openclaw.news.repository.ArticleRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.rometools.rome.feed.synd.SyndEntry;
+import com.rometools.rome.feed.synd.SyndFeed;
+import com.rometools.rome.io.SyndFeedInput;
+import com.rometools.rome.io.XmlReader;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import java.io.IOException;
 import java.net.URL;
 import java.time.LocalDateTime;
-import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
+import java.time.ZoneId;
 import java.util.*;
-
-import com.rometools.rome.io.FeedException;
-import com.rometools.rome.io.SyndFeedInput;
-import com.rometools.rome.model.SyndEntry;
-import com.rometools.rome.model.SyndFeed;
 
 @Service
 public class RssFeedService {
-    
-    @Autowired
-    private ArticleRepository articleRepository;
-    
-    // Define feed sources with their categories
-    private static final Map<String, String> FEED_SOURCES = new HashMap<>();
-    static {
-        FEED_SOURCES.put("https://feeds.reuters.com/reuters/worldNews", "world");
-        FEED_SOURCES.put("https://feeds.bbci.co.uk/news/rss.xml", "world");
-        FEED_SOURCES.put("https://www.yna.co.kr/RSS/news.xml", "world");
-        FEED_SOURCES.put("https://www.hankyung.com/feed/all-news", "economy");
-    }
-    
-    public List<Article> fetchAndParseFeeds() {
+
+    private static final Logger log = LoggerFactory.getLogger(RssFeedService.class);
+
+    private static final Map<String, String> FEED_SOURCES = new LinkedHashMap<>() {{
+        put("https://feeds.bbci.co.uk/news/rss.xml", "world");
+        put("https://feeds.bbci.co.uk/news/politics/rss.xml", "politics");
+        put("https://feeds.bbci.co.uk/news/technology/rss.xml", "tech");
+        put("https://feeds.reuters.com/reuters/worldNews", "world");
+        put("https://www.yna.co.kr/RSS/news.xml", "world");
+        put("https://www.hankyung.com/feed/all-news", "economy");
+    }};
+
+    public List<Article> fetchAllFeeds() {
         List<Article> articles = new ArrayList<>();
-        
+
         for (Map.Entry<String, String> entry : FEED_SOURCES.entrySet()) {
-            String feedUrl = entry.getKey();
-            String category = entry.getValue();
-            
             try {
-                SyndFeed feed = fetchFeed(feedUrl);
-                if (feed != null) {
-                    List<Article> parsedArticles = parseFeedEntries(feed, category);
-                    articles.addAll(parsedArticles);
+                SyndFeedInput input = new SyndFeedInput();
+                SyndFeed feed = input.build(new XmlReader(new URL(entry.getKey())));
+                String category = entry.getValue();
+                String source = feed.getTitle() != null ? feed.getTitle() : entry.getKey();
+
+                for (SyndEntry item : feed.getEntries()) {
+                    Article article = new Article();
+                    article.setTitle(item.getTitle());
+                    article.setUrl(item.getLink());
+                    article.setSource(source);
+                    article.setCategory(category);
+
+                    if (item.getDescription() != null) {
+                        String desc = item.getDescription().getValue();
+                        article.setSummary(null); // Will be filled by AI
+                    }
+
+                    if (item.getPublishedDate() != null) {
+                        article.setPublishedAt(LocalDateTime.ofInstant(
+                                item.getPublishedDate().toInstant(), ZoneId.systemDefault()));
+                    } else {
+                        article.setPublishedAt(LocalDateTime.now());
+                    }
+
+                    article.setCreatedAt(LocalDateTime.now());
+                    articles.add(article);
                 }
+
+                log.info("Fetched {} articles from {}", feed.getEntries().size(), source);
             } catch (Exception e) {
-                System.err.println("Error fetching or parsing feed from " + feedUrl + ": " + e.getMessage());
-                // Continue with other feeds instead of failing completely
+                log.warn("Failed to fetch feed {}: {}", entry.getKey(), e.getMessage());
             }
         }
-        
-        return articles;
-    }
-    
-    private SyndFeed fetchFeed(String feedUrl) throws IOException, FeedException {
-        URL url = new URL(feedUrl);
-        SyndFeedInput input = new SyndFeedInput();
-        return input.build(url.openStream());
-    }
-    
-    private List<Article> parseFeedEntries(SyndFeed feed, String category) {
-        List<Article> articles = new ArrayList<>();
-        
-        if (feed.getEntries() == null) {
-            return articles;
-        }
-        
-        for (SyndEntry entry : feed.getEntries()) {
-            try {
-                String title = entry.getTitle();
-                String link = entry.getLink();
-                String description = entry.getDescription() != null ? entry.getDescription().getValue() : "";
-                
-                // Parse publication date
-                ZonedDateTime publishedDate = entry.getPublishedDate() != null 
-                    ? entry.getPublishedDate().toInstant().atZone(ZoneId.systemDefault()) 
-                    : LocalDateTime.now().atZone(ZoneId.systemDefault());
-                
-                // Create article object
-                Article article = new Article();
-                article.setTitle(title);
-                article.setSummary(description);
-                article.setSource(feed.getTitle());
-                article.setCategory(category);
-                article.setUrl(link);
-                article.setPublishedAt(publishedDate.toLocalDateTime());
-                article.setCreatedAt(LocalDateTime.now());
-                
-                articles.add(article);
-            } catch (Exception e) {
-                System.err.println("Error parsing entry: " + e.getMessage());
-                // Continue with other entries instead of failing completely
-            }
-        }
-        
+
         return articles;
     }
 }

@@ -17,11 +17,16 @@ function App() {
   const [articles, setArticles] = useState<Article[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/articles/hot')
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then(setArticles)
+      .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
 
@@ -44,6 +49,8 @@ function App() {
           <div className="spinner"></div>
           <p>Loading news...</p>
         </div>
+      ) : error ? (
+        <div className="empty-state">Error: {error}</div>
       ) : filtered.length === 0 ? (
         <div className="empty-state">No articles found</div>
       ) : (
